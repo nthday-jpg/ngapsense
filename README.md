@@ -1,4 +1,4 @@
-# IoT Water Level Monitoring & Flood Warning System
+# NgậpSense — IoT Water Level Monitoring & Flood Warning System
 
 > **Course project.** A prototype built on a simulated ESP32 and deployed to a cloud server.
 > It does not connect to real drainage infrastructure.
@@ -7,11 +7,11 @@
 
 ## 1. Overview
 
-This project collects **water level** and **rainfall** data from sensors, publishes it over **MQTT**, stores
-it in a database, and displays live and historical readings on a web dashboard. When readings cross
-configured thresholds, the system raises alerts on the dashboard and sends a remote notification. Two
-extensions are included: a **short-term water level forecast** and a **servo-driven gate** that models a
-sluice gate controlled from the dashboard.
+**NgậpSense** (from Vietnamese *ngập* — flooding — and *sense*) collects **water level** and **rainfall**
+data from sensors, publishes it over **MQTT**, stores it in a database, and displays live and historical
+readings on a web dashboard. When readings cross configured thresholds, the system raises alerts on the
+dashboard and sends a remote notification. Two extensions are included: a **short-term water level forecast**
+and a **servo-driven gate** that models a sluice gate controlled from the dashboard.
 
 The ESP32 and its sensors run in the **Wokwi simulator**, so the system can be demonstrated without hardware.
 
@@ -103,18 +103,18 @@ FR01–FR07 are the core monitoring and alerting scope; FR08–FR09 are extensio
 
 | Topic | Direction | Payload |
 | --- | --- | --- |
-| `iot/{device_id}/telemetry` | Device → Server | `{ "ts", "water_level", "rain", "rssi" }` |
-| `iot/{device_id}/status` | Device → Server | `{ "online", "fw", "uptime" }` |
-| `iot/{device_id}/alert` | Device → Server | `{ "level", "value" }` |
-| `iot/{device_id}/cmd` | Server → Device | `{ "action": "open" \| "close", "gate_id" }` |
-| `iot/{device_id}/cmd/ack` | Device → Server | `{ "action", "result" }` |
+| `ngapsense/{device_id}/telemetry` | Device → Server | `{ "ts", "water_level", "rain", "rssi" }` |
+| `ngapsense/{device_id}/status` | Device → Server | `{ "online", "fw", "uptime" }` |
+| `ngapsense/{device_id}/alert` | Device → Server | `{ "level", "value" }` |
+| `ngapsense/{device_id}/cmd` | Server → Device | `{ "action": "open" \| "close", "gate_id" }` |
+| `ngapsense/{device_id}/cmd/ack` | Device → Server | `{ "action", "result" }` |
 
 QoS: telemetry `0/1`, commands `1`, status `1` with a last-will message.
 
 ## 9. Repository Layout
 
 ```
-iot/
+ngapsense/
 ├── sim/                  # Wokwi project: sketch.ino, diagram.json, libraries.txt, wokwi.toml
 ├── backend/              # FastAPI app: api/, mqtt/, db/, services/, tests/
 ├── frontend/             # Streamlit app: app.py, pages/, ui/, services/
@@ -149,8 +149,8 @@ Two services are deployed from the same repository:
 
 | Service | Type | Start command |
 | --- | --- | --- |
-| `iot-api` | Web service (Python) | `uvicorn app.main:app --host 0.0.0.0 --port $PORT --app-dir backend` |
-| `iot-dashboard` | Web service (Python) | `streamlit run frontend/app.py --server.port $PORT --server.address 0.0.0.0` |
+| `ngapsense-api` | Web service (Python) | `uvicorn app.main:app --host 0.0.0.0 --port $PORT --app-dir backend` |
+| `ngapsense-dashboard` | Web service (Python) | `streamlit run frontend/app.py --server.port $PORT --server.address 0.0.0.0` |
 
 Configuration:
 
