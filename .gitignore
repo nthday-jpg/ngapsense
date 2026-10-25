@@ -7,6 +7,9 @@ ENV/
 env/
 .pytest_cache/
 
+.env
+*.local.h
+
 .vscode/*
 
-dist/*
+*/dist/*
