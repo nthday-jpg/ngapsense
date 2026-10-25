@@ -7,8 +7,12 @@ void setup() {
 
 void loop() {
   float level = readWaterLevel();
-  Serial.print("Water level: ");
-  Serial.print(level);
-  Serial.println(" cm");
+  if (level < 0) {
+    Serial.println("Water level: sensor error (no echo)");
+  } else {
+    Serial.print("Water level: ");
+    Serial.print(level);
+    Serial.println(" cm");
+  }
   delay(1000);
 }
