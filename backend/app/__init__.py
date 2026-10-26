@@ -1,0 +1,1 @@
+"""NgậpSense backend application."""
