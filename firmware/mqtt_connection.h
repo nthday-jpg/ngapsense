@@ -52,19 +52,22 @@ inline bool ensureMqtt(PubSubClient &client) {
 }
 
 inline bool publishTelemetry(PubSubClient &client, float waterLevel,
-                             int rssi, unsigned long uptimeMs) {
+                             float rainMm, float rainRateMmH, int rssi,
+                             unsigned long uptimeMs) {
   if (!client.connected()) {
     return false;
   }
 
-  char payload[160];
+  char payload[200];
   int written = snprintf(
       payload,
       sizeof(payload),
-      "{\"device_id\":\"%s\",\"water_level\":%.2f,\"rssi\":%d,"
-      "\"uptime_ms\":%lu}",
+      "{\"device_id\":\"%s\",\"water_level\":%.2f,\"rain_mm\":%.2f,"
+      "\"rain_rate\":%.2f,\"rssi\":%d,\"uptime_ms\":%lu}",
       DEVICE_ID,
       waterLevel,
+      rainMm,
+      rainRateMmH,
       rssi,
       uptimeMs);
 

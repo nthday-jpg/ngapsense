@@ -4,6 +4,7 @@
 #include "wifi_connection.h"
 #include "mqtt_connection.h"
 #include "water_sensor.h"
+#include "rain_sensor.h"
 
 WiFiClient netClient;
 PubSubClient mqttClient(netClient);
@@ -34,11 +35,14 @@ void setup() {
   delay(100);
 
   setupWaterSensor();
+  setupRainSensor();
   setupWiFi();
   setupMqtt(mqttClient, onMqttMessage);
 }
 
 void loop() {
+  updateRainSensor();
+
   if (ensureWiFi()) {
     ensureMqtt(mqttClient);
     mqttClient.loop();
@@ -49,21 +53,31 @@ void loop() {
     lastSensorRead = now;
 
     float level = readWaterLevel();
+    float rainTotal = readRainTotalMm();
+    float rainRate = readRainRateMmPerHour(now);
+
+    Serial.print("Rain: ");
+    Serial.print(rainTotal, 2);
+    Serial.print(" mm (");
+    Serial.print(rainRate, 2);
+    Serial.println(" mm/h)");
+
     if (level < 0) {
       Serial.println("Water level: sensor error (no echo)");
     } else {
       Serial.print("Water level: ");
       Serial.print(level, 2);
       Serial.println(" cm");
+    }
 
-      if (mqttClient.connected() &&
-          now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
-        lastTelemetry = now;
-        if (publishTelemetry(mqttClient, level, WiFi.RSSI(), now)) {
-          Serial.println("Telemetry published");
-        } else {
-          Serial.println("Telemetry publish failed");
-        }
+    if (level >= 0 && mqttClient.connected() &&
+        now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
+      lastTelemetry = now;
+      if (publishTelemetry(mqttClient, level, rainTotal, rainRate, WiFi.RSSI(),
+                           now)) {
+        Serial.println("Telemetry published");
+      } else {
+        Serial.println("Telemetry publish failed");
       }
     }
   }

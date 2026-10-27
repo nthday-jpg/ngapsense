@@ -103,7 +103,7 @@ FR01–FR07 are the core monitoring and alerting scope; FR08–FR09 are extensio
 
 | Topic | Direction | Payload |
 | --- | --- | --- |
-| `ngapsense/{device_id}/telemetry` | Device → Server | `{ "ts", "water_level", "rain", "rssi" }` |
+| `ngapsense/{device_id}/telemetry` | Device → Server | `{ "ts", "water_level", "rain_mm", "rain_rate", "rssi" }` |
 | `ngapsense/{device_id}/status` | Device → Server | `{ "online", "fw", "uptime" }` |
 | `ngapsense/{device_id}/alert` | Device → Server | `{ "level", "value" }` |
 | `ngapsense/{device_id}/cmd` | Server → Device | `{ "action": "open" \| "close", "gate_id" }` |
