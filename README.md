@@ -98,18 +98,52 @@ FR01–FR07 are the core monitoring and alerting scope; FR08–FR09 are extensio
 | Retention | At least 30 days of readings |
 | Forecast horizon | 15–60 min, evaluated with MAE/RMSE |
 | Connectivity loss | Device auto-reconnects to the broker |
+| Health reporting | Sensor health published every 30 s and after reconnect |
 
 ## 8. MQTT Topics
 
 | Topic | Direction | Payload |
 | --- | --- | --- |
 | `ngapsense/{device_id}/telemetry` | Device → Server | `{ "ts", "water_level", "rain_mm", "rain_rate", "rssi" }` |
-| `ngapsense/{device_id}/status` | Device → Server | `{ "online", "fw", "uptime" }` |
+| `ngapsense/{device_id}/status` | Device → Server | `{ "device_id", "online", "fw", "uptime_ms", "rssi", "sensors": { "water_level", "rain" } }` |
 | `ngapsense/{device_id}/alert` | Device → Server | `{ "level", "value" }` |
 | `ngapsense/{device_id}/cmd` | Server → Device | `{ "action": "open" \| "close", "gate_id" }` |
 | `ngapsense/{device_id}/cmd/ack` | Device → Server | `{ "action", "result" }` |
 
 QoS: telemetry `0/1`, commands `1`, status `1` with a last-will message.
+
+### Sensor health
+
+The device publishes one health status per sensor on the retained `status` topic immediately after it
+connects and then every 30 s. The status is inferred from the evidence available on the ESP32:
+
+- **Read errors** — no echo, or an HC-SR04 distance outside the 2–400 cm range.
+- **Repeated failures** — three consecutive failed water level reads.
+- **Stale data** — no valid water level reading for 15 s.
+
+| Status | Meaning |
+| --- | --- |
+| `HEALTHY` | Recent readings pass the read and range checks |
+| `DEGRADED` | A few read errors, or no reading yet |
+| `ERROR` | Repeated read failures, stale data, or a stuck rain contact |
+
+`OFFLINE` is separate from these states: the MQTT last-will message marks the whole device offline when
+it disconnects. Rain is `ERROR` only when its reed switch stays closed for 5 min, since a normal tip is
+momentary.
+
+```json
+{
+  "device_id": "esp32-01-7f3a9c",
+  "online": true,
+  "fw": "0.1.0",
+  "uptime_ms": 120000,
+  "rssi": -55,
+  "sensors": {
+    "water_level": "HEALTHY",
+    "rain": "HEALTHY"
+  }
+}
+```
 
 ## 9. Repository Layout
 

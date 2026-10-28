@@ -1,16 +1,18 @@
 #ifndef RAIN_SENSOR_H
 #define RAIN_SENSOR_H
 
+#include "sensor_health.h"
+
 // Wokwi has no rain gauge part, so a tipping-bucket gauge is emulated with a
 // pushbutton: one press = one bucket tip. A real tipping bucket closes a reed
 // switch once per fixed volume of rain; 0.2794 mm per tip is the usual value
 // for a 0.011 inch bucket. The firmware therefore reports rainfall in mm (and
 // mm/h), not a wetness percentage.
 //
-// GPIO 27 is used instead of an input-only pin because the code relies on the
-// ESP32's internal pull-up, and GPIO 34-39 do not have one.
+// GPIO 23 is on the right-hand header, next to the ESP32's GND rail feed, and
+// supports the internal pull-up (unlike the input-only GPIO 34-39 pins).
 
-#define RAIN_PIN 27
+#define RAIN_PIN 23
 
 const float RAIN_MM_PER_TIP = 0.2794f;
 
@@ -74,6 +76,8 @@ inline void updateRainSensor() {
       registerRainTip(now);
     }
   }
+
+  recordRainPinState(stableReading, now);
 }
 
 // Number of tips recorded inside the rate window.

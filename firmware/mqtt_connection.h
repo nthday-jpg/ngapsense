@@ -79,4 +79,33 @@ inline bool publishTelemetry(PubSubClient &client, float waterLevel,
   return client.publish(TOPIC_TELEMETRY, payload);
 }
 
+// Publish the retained status topic with one health status per sensor.
+inline bool publishHealth(PubSubClient &client, const char *waterStatus,
+                          const char *rainStatus, int rssi,
+                          unsigned long uptimeMs) {
+  if (!client.connected()) {
+    return false;
+  }
+
+  char payload[256];
+  int written = snprintf(
+      payload,
+      sizeof(payload),
+      "{\"device_id\":\"%s\",\"online\":true,\"fw\":\"" FIRMWARE_VERSION
+      "\",\"uptime_ms\":%lu,\"rssi\":%d,"
+      "\"sensors\":{\"water_level\":\"%s\",\"rain\":\"%s\"}}",
+      DEVICE_ID,
+      uptimeMs,
+      rssi,
+      waterStatus,
+      rainStatus);
+
+  if (written < 0 || written >= static_cast<int>(sizeof(payload))) {
+    Serial.println("Health payload too large");
+    return false;
+  }
+
+  return client.publish(TOPIC_STATUS, payload, true);
+}
+
 #endif

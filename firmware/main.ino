@@ -3,6 +3,7 @@
 #include "config.h"
 #include "wifi_connection.h"
 #include "mqtt_connection.h"
+#include "sensor_health.h"
 #include "water_sensor.h"
 #include "rain_sensor.h"
 
@@ -11,6 +12,7 @@ PubSubClient mqttClient(netClient);
 
 unsigned long lastSensorRead = 0;
 unsigned long lastTelemetry = 0;
+unsigned long lastHealth = 0;
 
 void onMqttMessage(char *topic, uint8_t *payload, unsigned int length) {
   char message[128];
@@ -53,6 +55,7 @@ void loop() {
     lastSensorRead = now;
 
     float level = readWaterLevel();
+    recordWaterReading(level, now);
     float rainTotal = readRainTotalMm();
     float rainRate = readRainRateMmPerHour(now);
 
@@ -62,8 +65,10 @@ void loop() {
     Serial.print(rainRate, 2);
     Serial.println(" mm/h)");
 
-    if (level < 0) {
+    if (level == WATER_LEVEL_NO_ECHO) {
       Serial.println("Water level: sensor error (no echo)");
+    } else if (level == WATER_LEVEL_OUT_OF_RANGE) {
+      Serial.println("Water level: sensor error (out of range)");
     } else {
       Serial.print("Water level: ");
       Serial.print(level, 2);
@@ -81,6 +86,28 @@ void loop() {
       }
     }
   }
+
+  // Publish a health report on every (re)connect and then at a fixed interval.
+  // This keeps running even when the water level sensor stops returning data.
+  static bool mqttWasConnected = false;
+  bool mqttConnected = mqttClient.connected();
+
+  if (mqttConnected &&
+      (!mqttWasConnected || now - lastHealth >= HEALTH_INTERVAL_MS)) {
+    lastHealth = now;
+    const char *waterStatus = waterHealthStatus(now);
+    const char *rainStatus = rainHealthStatus(now);
+
+    if (publishHealth(mqttClient, waterStatus, rainStatus, WiFi.RSSI(), now)) {
+      Serial.print("Health report: water=");
+      Serial.print(waterStatus);
+      Serial.print(", rain=");
+      Serial.println(rainStatus);
+    } else {
+      Serial.println("Health report publish failed");
+    }
+  }
+  mqttWasConnected = mqttConnected;
 
   delay(10);
 }

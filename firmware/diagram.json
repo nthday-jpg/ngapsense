@@ -15,8 +15,8 @@
     {
       "type": "wokwi-pushbutton",
       "id": "rain1",
-      "top": 331.8,
-      "left": -176.9,
+      "top": 0,
+      "left": 430,
       "attrs": {
         "color": "blue",
         "label": "Rain gauge (1 tip = 0.28 mm)",
@@ -41,8 +41,8 @@
     [ "ultrasonic1:TRIG", "esp:5", "green", [ "v0" ] ],
     [ "esp:18", "ultrasonic1:ECHO", "green", [ "h28.8", "v76.8" ] ],
 
-    [ "rain1:1.l", "esp:27", "green", [ "h-40", "v-330", "h120" ] ],
-    [ "rain1:2.l", "esp:GND.1", "black", [ "h-70", "v-300", "h150" ] ]
+    [ "rain1:1.l", "esp:23", "green", [] ],
+    [ "rain1:2.l", "bb1:tn.25", "black", [] ]
   ],
   "dependencies": {}
 }
