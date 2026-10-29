@@ -3,8 +3,9 @@
 > **Course project.** A prototype built on a simulated ESP32 and deployed to a cloud server.
 > It does not connect to real drainage infrastructure.
 
-> **Current implementation: Step 1 — project scaffolding only.** FastAPI exposes
-> `GET /health`; Streamlit shows a placeholder; Docker Compose prepares PostgreSQL.
+> **Current implementation: Step 2 — PostgreSQL connection layer.** FastAPI exposes
+> `GET /health` and `GET /health/db` using SQLAlchemy 2.x and psycopg 3.
+> Streamlit shows a placeholder; Docker Compose prepares PostgreSQL.
 > The existing firmware and standalone MQTT listener are preserved. The overview,
 > requirements, and roadmap below describe planned capabilities.
 
@@ -65,7 +66,7 @@ flowchart LR
 | Edge | ESP32, potentiometer (level), rain sensor, servo — Wokwi | Measure and publish data; receive commands |
 | Transport | HiveMQ Cloud (or local Mosquitto) | Message relay between device and server |
 | Backend | FastAPI, paho-mqtt, SQLAlchemy | Process and store data, evaluate thresholds, issue commands |
-| Database | PostgreSQL | Compose infrastructure in Step 1; application storage planned |
+| Database | PostgreSQL | Compose infrastructure and connection health probe; application storage planned |
 | Analytics | scikit-learn | Short-horizon water level forecast |
 | Dashboard | Streamlit, Plotly | Live view, history, alerts, controls |
 | Hosting | Render (two Python web services) | Public deployment of backend and dashboard |
@@ -124,22 +125,25 @@ ngapsense/
 ├── backend/
 │   ├── app/
 │   │   ├── __init__.py
-│   │   ├── main.py        # FastAPI application and /health
+│   │   ├── main.py        # FastAPI application, /health and /health/db
 │   │   ├── api/
 │   │   ├── core/
+│   │   │   └── config.py  # DATABASE_URL from environment or root .env
 │   │   ├── db/
+│   │   │   └── session.py # Engine, session factory and get_db dependency
 │   │   ├── models/
 │   │   ├── schemas/
 │   │   └── services/
 │   ├── mqtt_listener.py   # Existing standalone listener, unchanged
-│   └── .env.example       # Existing MQTT configuration example
+│   ├── .env.example       # Existing MQTT configuration example
+│   └── tests/             # Configuration, session and health checks
 ├── frontend/
 │   ├── app.py             # Streamlit placeholder
 │   ├── pages/
 │   ├── components/
 │   └── services/
 ├── docker-compose.yml     # PostgreSQL only
-├── .env.example           # PostgreSQL configuration
+├── .env.example           # PostgreSQL and DATABASE_URL configuration
 ├── .python-version
 ├── pyproject.toml
 ├── uv.lock
@@ -147,22 +151,51 @@ ngapsense/
 └── README.md
 ```
 
-Backend subpackages and frontend components/services contain empty `__init__.py`
-files only. `frontend/pages/.gitkeep` keeps the empty directory in Git without
+Backend api/models/schemas/services and frontend components/services remain empty
+packages. `frontend/pages/.gitkeep` keeps the empty directory in Git without
 adding a page to Streamlit. Other existing empty/cache directories are omitted.
 No ORM models, database tables, migrations, or seed scripts are added.
 
-## 10. Running Locally (Step 1)
+## 10. Running Locally (Step 2)
 
 Run commands from the repository root. Prerequisites: Python 3.13+ and
 [uv](https://docs.astral.sh/uv/). Docker with Docker Compose v2 is needed only
-for PostgreSQL. FastAPI and Streamlit run independently without a database or broker.
+for PostgreSQL. FastAPI needs a valid database URL but can start while PostgreSQL
+is offline. Streamlit remains independent. Neither entrypoint connects to MQTT.
 
 Install dependencies from the lockfile:
 
 ```powershell
 uv sync --locked
 ```
+
+Prepare the root configuration before starting FastAPI:
+
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+# Edit .env: choose POSTGRES_PASSWORD and update DATABASE_URL to match.
+```
+
+`DATABASE_URL` in the process environment takes priority over the root `.env`.
+The file is located relative to the backend source, independently of the working
+directory; `backend/.env` remains reserved for the existing MQTT listener.
+The backend does not construct credentials from `POSTGRES_*`; those variables
+configure Docker Compose. For the example configuration:
+
+```dotenv
+POSTGRES_DB=ngapsense
+POSTGRES_USER=ngapsense
+POSTGRES_PASSWORD=change_me_local
+POSTGRES_PORT=5432
+DATABASE_URL=postgresql+psycopg://ngapsense:change_me_local@127.0.0.1:5432/ngapsense
+```
+
+Keep the username, password, database, and port in both places consistent. Use
+the raw password for `POSTGRES_PASSWORD`; percent-encode reserved characters
+only inside the URL (for example `@` becomes `%40`). Do not commit `.env`.
+Missing/invalid `DATABASE_URL` prevents API startup with a clear configuration
+error that does not include the supplied value. Restart FastAPI after changing
+the URL because its engine/session factory are cached for the process lifetime.
 
 Start FastAPI in terminal 1:
 
@@ -188,12 +221,9 @@ uv run streamlit run frontend/app.py --server.port 8501
 Open <http://localhost:8501> to see the NgậpSense title and placeholder message.
 There are no charts, simulated readings, or API calls.
 
-For PostgreSQL, copy the example once (keep any existing `.env`), then edit
-`.env` to choose `POSTGRES_PASSWORD`:
+Start PostgreSQL in another terminal after configuring `.env`:
 
 ```powershell
-Copy-Item .env.example .env
-# Edit .env before continuing.
 docker compose config --quiet
 docker compose up -d --wait postgres
 docker compose ps
@@ -211,7 +241,63 @@ docker compose down
 
 The image initializes the database/user on its first start with an empty volume.
 Changing `.env` later does not change credentials in an existing volume.
-No application tables are created. FastAPI does not connect to PostgreSQL.
+No application tables are created. Check the database connection through FastAPI:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health/db
+```
+
+Expected: HTTP 200 with `{"database":"connected"}`. When PostgreSQL is unavailable,
+the endpoint returns HTTP 503 with `{"database":"unavailable"}` while `/health`
+continues to return HTTP 200. PowerShell `Invoke-RestMethod` reports non-2xx as an
+error; use `curl.exe -i http://127.0.0.1:8000/health/db` to see the status/body directly.
+
+To check stop/restart recovery without restarting FastAPI:
+
+```powershell
+docker compose stop postgres
+curl.exe -i http://127.0.0.1:8000/health/db  # Expected: 503
+curl.exe -i http://127.0.0.1:8000/health     # Expected: 200
+docker compose up -d --wait postgres
+curl.exe -i http://127.0.0.1:8000/health/db  # Expected: 200
+```
+
+These are manual verification commands, not claims that Docker ran successfully
+in the development environment used for this change.
+
+The synchronous SQLAlchemy engine is created once at API startup without opening
+a connection. It uses `pool_pre_ping=True`, a pool of 5 connections with 5 overflow
+slots, a 5-second pool wait timeout, and a 3-second connection timeout. `/health/db`
+runs `SELECT 1` in a worker thread through `get_db()`. Every dependency invocation
+creates its own session; closing it rolls back unfinished transactions and returns
+the connection to the pool. The engine is disposed on application shutdown. There
+is no automatic commit, schema creation, or retry of a failed transaction. A later
+request can reconnect after PostgreSQL recovers.
+
+Common connection problems:
+
+- **Missing/invalid URL:** set `DATABASE_URL` in the root `.env` using
+  `postgresql+psycopg://`. An existing process environment value overrides the file.
+- **Connection refused / 503:** check `docker compose ps`, wait for PostgreSQL to
+  become healthy, and ensure the URL uses `127.0.0.1` and the published host port.
+- **Port already in use:** change `POSTGRES_PORT` and the port in `DATABASE_URL`,
+  then recreate the container and restart FastAPI.
+- **Authentication failure:** check that the URL matches the credentials used to
+  initialize the existing volume. Editing `.env` does not alter an existing
+  PostgreSQL user/password. Preserve the volume when diagnosing this issue.
+- **Special characters in password:** percent-encode them in `DATABASE_URL` only.
+
+Run automated checks independently of a running PostgreSQL server:
+
+```powershell
+uv run pytest -q
+```
+
+The development dependencies are pytest and httpx2 (required by the installed
+FastAPI/Starlette TestClient). Tests isolate `.env`/credentials, mock database
+availability, use SQLite `SELECT 1` to verify SQLAlchemy session cleanup without
+creating tables, and check a real psycopg connection refusal on a reserved local
+port. Unit-test recovery does not substitute for the real PostgreSQL restart test.
 
 The existing MQTT listener still loads `backend/.env`, independently of the root
 `.env`. To run that existing tool separately (optional):
@@ -221,7 +307,27 @@ Copy-Item backend/.env.example backend/.env  # First setup only; keep existing s
 uv run python backend/mqtt_listener.py
 ```
 
-### Step 1 verification (2026-10-26)
+### Step 2 verification (2026-10-26)
+
+- `uv run pytest -q`: **21 passed**, without warnings. Configuration validation,
+  environment precedence, secret-safe errors, lazy engine construction, separate
+  sessions, rollback/connection release on success and failure, and pool disposal
+  at API shutdown were checked.
+- HTTP tests checked 200/503/200 recovery in the same API lifecycle with a mocked
+  session, plus SQLAlchemy pool-timeout handling. SQLite session checks used only
+  `SELECT 1` and created no tables.
+- A real Uvicorn process started against an unreachable local database port.
+  Two real psycopg connection attempts returned HTTP 503 from `/health/db`;
+  `/health` remained HTTP 200 and the API stayed alive. The verification process
+  was stopped; its logs contained neither the test password nor connection URL.
+- `uv sync --locked`, `uv lock --check`, and `git diff --check` passed.
+- Docker was still unavailable. PostgreSQL container health, a successful real
+  PostgreSQL connection/HTTP 200, and stop/restart recovery with a real database
+  remain **unverified**. Run the manual commands above in a Docker-enabled environment.
+- Firmware, frontend, the MQTT listener, its environment example, and Docker
+  Compose were preserved. No broker or ESP32 simulation was rerun for this step.
+
+### Historical Step 1 verification (2026-10-26)
 
 - `uv sync --locked`, `uv lock --check`, and `git diff --check` passed.
 - A real Uvicorn process started; `/health` returned HTTP 200 and `{"status":"ok"}`.
@@ -236,9 +342,9 @@ uv run python backend/mqtt_listener.py
   and `backend/.env.example` were unchanged. ESP32 simulation and broker connectivity
   were not rerun. Temporary verification servers were stopped.
 
-## 11. Future Work (not implemented in Step 1)
+## 11. Future Work (not implemented in Step 2)
 
-Database connections, ORM models, migrations, sensor/device APIs, dashboard
+ORM models, application tables, migrations, seed data, sensor/device APIs, dashboard
 charts, authentication, warnings, MQTT integration with FastAPI, servo controls,
 Machine Learning, and cloud deployment are not implemented by this scaffold.
 The existing firmware/listener keep their current behavior.
